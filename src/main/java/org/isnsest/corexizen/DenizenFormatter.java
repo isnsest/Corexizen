@@ -24,13 +24,13 @@ import org.jspecify.annotations.Nullable;
  *
  * @Usage
  * // Show the server version using a Denizen tag.
- * - narrate "Server version: <denizen[server.version]>"
+ * - narrate "Server version: <denizen[<server.version>]>"
  *
  * // Show the name of the player who is running the Corex script.
- * - narrate "Hello, <denizen[player.name]>!"
+ * - narrate "Hello, <denizen[<player.name>]>!"
  *
  * // Get the player's money balance from Denizen.
- * - narrate "Balance: $<denizen[player.money]>"
+ * - narrate "Balance: $<denizen[<player.money>]>"
  */
 
 public class DenizenFormatter implements AbstractFormatter {
