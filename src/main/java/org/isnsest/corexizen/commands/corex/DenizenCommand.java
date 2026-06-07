@@ -32,8 +32,6 @@ import java.util.Map;
  * @Aliases d
  * @ShortDescription Runs a Denizen task script.
  *
- * @Implements Run
- *
  * @Description
  * Runs a script in the Denizen engine rather than Corex.
  *
