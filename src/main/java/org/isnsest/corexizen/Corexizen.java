@@ -18,6 +18,7 @@ public final class Corexizen extends JavaPlugin {
         Debug.log("Corexizen", "Loading...");
 
         Utils.scriptQueue.setKeepAlive(true);
+        Utils.scriptQueue.setSilent(true);
         Utils.scriptQueue.start();
 
         registerForDenizen();
@@ -32,6 +33,8 @@ public final class Corexizen extends JavaPlugin {
     }
 
     public static void registerForDenizen() {
+        Utils.registerEventHooks();
+
         DenizenCore.commandRegistry.registerCommand(CorexCommand.class);
 
         // <--[tag]

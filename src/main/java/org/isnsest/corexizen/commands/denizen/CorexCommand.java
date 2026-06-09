@@ -1,91 +1,117 @@
 package org.isnsest.corexizen.commands.denizen;
 
 
-import com.denizenscript.denizencore.objects.core.ElementTag;
+import com.denizenscript.denizen.utilities.Utilities;
 import com.denizenscript.denizencore.scripts.ScriptEntry;
-import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
+import com.denizenscript.denizencore.scripts.commands.BracedCommand;
 import com.denizenscript.denizencore.scripts.commands.generator.*;
-import dev.corexinc.corex.engine.scripts.ScriptManager;
-import dev.corexinc.corex.environment.containers.TaskContainer;
-import org.isnsest.corexizen.Utils;
+import com.denizenscript.denizencore.utilities.debugging.Debug;
+import dev.corexinc.corex.engine.compiler.Instruction;
+import dev.corexinc.corex.engine.compiler.ScriptCompiler;
+import dev.corexinc.corex.engine.queue.ScriptQueue;
+import dev.corexinc.corex.environment.tags.player.PlayerTag;
 
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
-public class CorexCommand extends AbstractCommand {
+public class CorexCommand extends BracedCommand {
 
     // <--[command]
     // @Name Corex
-    // @Syntax corex [<task>] (def:<element|...>) (path:<name>) (id:<name>)
-    // @Required 1
-    // @Maximum 4
-    // @Short Runs a Corex task script.
+    // @Syntax corex [<commands>]
+    // @Required 0
+    // @Maximum 0
+    // @Short Executes Corex script commands directly inside Denizen.
     // @Group Corexizen
     // @Plugin Corex
     //
     // @Description
-    // The 'corex' command allows you to execute Corex engine task scripts directly from within Denizen.
-    // This is part of the Corexizen addon, providing seamless cross-engine script integration.
+    // The 'corex' command lets you write and run Corex script commands directly inside your Denizen scripts.
     //
-    // You must specify the name of the Corex task you wish to run.
-    //
-    // Optionally, use the "path:" argument to choose a specific sub-path within the Corex task.
-    // If no path is specified, it defaults to "script".
-    //
-    // Optionally, use the "def:" argument to pass a list of definitions to the resulting Corex queue.
-    //
-    // Optionally, use the "id:" argument to specify a custom queue ID for the Corex execution.
-    // If none is specified, a unique ID will be automatically generated (formatted as Corex_<timestamp>).
+    // If the Denizen script has a player linked to it (like from an event), that player will automatically
+    // be the target for the Corex commands.
     //
     // @Usage
-    // Use to run a Corex task script named 'GlobalBroadcast'.
-    // - corex GlobalBroadcast
+    // Use to send a message using Corex's narrate command directly from Denizen.
+    // - corex:
+    //     - narrate "Hello from Corex!"
     //
     // @Usage
-    // Use to run a Corex task named 'HealPlayer' and pass definition values to it.
-    // - corex HealPlayer def:20|true
-    //
-    // @Usage
-    // Use to run 'MainTask' at the specific sub-path 'SubSection'.
-    // - corex MainTask path:SubSection
-    //
-    // @Usage
-    // Use to run a task with a manually specified Corex queue ID.
-    // - corex MyTask id:VeryImportantQueue
+    // Use to run a Corex repeat loop.
+    // - corex:
+    //     - repeat 3 as:x:
+    //         - narrate "This is loop number <[x]>"
     // -->
 
     public CorexCommand() {
         setName("corex");
-        setSyntax("corex [<task>] (def:<element|...>) (path:<name>) (id:<name>)");
-        setRequiredArguments(2, 4);
+        setSyntax("corex [<commands>]");
+        setRequiredArguments(0, 0);
         autoCompile();
     }
 
-    @Override
-    public void addCustomTabCompletions(TabCompletionsBuilder tab) {
-        tab.add(
-                ScriptManager.getContainersByType(TaskContainer.class)
-                        .stream()
-                        .map(TaskContainer::getName)
-                        .collect(Collectors.toList())
-        );
-    }
-
-    public static void autoExecute(ScriptEntry scriptEntry,
-                                   @ArgName("task") @ArgLinear ElementTag script,
-                                   @ArgName("definitions") @ArgPrefixed @ArgDefaultNull ElementTag definitions,
-                                   @ArgName("path") @ArgPrefixed @ArgDefaultText("script") ElementTag path,
-                                   @ArgName("id") @ArgPrefixed @ArgDefaultNull ElementTag id) {
-        String idStr = id != null ? id.asString() : null;
-        if (id == null) {
-            idStr = "Corex_" + System.currentTimeMillis();
+    public static void autoExecute(ScriptEntry scriptEntry) {
+        List<ScriptEntry> bracedCommandsList = getBracedCommandsDirect(scriptEntry, scriptEntry);
+        if (bracedCommandsList == null || bracedCommandsList.isEmpty()) {
+            Debug.echoError(scriptEntry, "Empty subsection - did you forget a ':'?");
+            return;
         }
 
-        Utils.runCorexTask(
-                scriptEntry,
-                script.asString(),
-                path.asString(),
-                definitions == null ? null : definitions.asString(),
-                idStr
+        Instruction[] instructionsArray = compileEntries(bracedCommandsList, scriptEntry);
+
+        var player = Utilities.getEntryPlayer(scriptEntry);
+
+        ScriptQueue scriptQueue = new ScriptQueue(
+                "Corex_" + System.currentTimeMillis(),
+                instructionsArray,
+                false,
+                player == null ? null : new PlayerTag(player.getPlayerEntity())
         );
+        scriptQueue.setSilent(true);
+        scriptQueue.start();
+    }
+
+    private static Instruction[] compileEntries(List<ScriptEntry> entries, ScriptEntry owner) {
+        if (entries == null) {
+            return new Instruction[0];
+        }
+
+        List<Instruction> instructions = new ArrayList<>();
+
+        for (ScriptEntry entry : entries) {
+            List<BracedData> bracedDataList = entry.getBracedSet();
+
+            if (bracedDataList != null && !bracedDataList.isEmpty()) {
+                List<ScriptEntry> subEntries = getBracedCommandsDirect(entry, owner);
+
+                Instruction[] innerBlock = compileEntries(subEntries, owner);
+
+                String rawLine = cleanCommandLine(entry.internal.originalLine);
+
+                Instruction instruction = ScriptCompiler.compile(rawLine, innerBlock);
+                if (instruction != null) {
+                    instructions.add(instruction);
+                }
+            } else {
+                String rawLine = cleanCommandLine(entry.internal.originalLine);
+                Instruction instruction = ScriptCompiler.compile(rawLine);
+                if (instruction != null) {
+                    instructions.add(instruction);
+                }
+            }
+        }
+
+        return instructions.toArray(new Instruction[0]);
+    }
+
+    private static String cleanCommandLine(String line) {
+        if (line == null) {
+            return "";
+        }
+        String trimmed = line.trim();
+        if (trimmed.endsWith(":")) {
+            return trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+        return trimmed;
     }
 }

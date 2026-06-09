@@ -1,7 +1,6 @@
 plugins {
     id("java-library")
     id("io.papermc.paperweight.userdev") version "2.0.0-beta.21"
-    id("com.gradleup.shadow") version "9.4.2"
     id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
@@ -21,15 +20,9 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
 
-tasks {
-    build {
-        dependsOn(shadowJar)
-    }
-
-    processResources {
-        val props = mapOf("version" to version)
-        filesMatching("paper-plugin.yml") {
-            expand(props)
-        }
+tasks.processResources {
+    val props = mapOf("version" to version)
+    filesMatching("paper-plugin.yml") {
+        expand(props)
     }
 }
